@@ -88,7 +88,8 @@ class RocketChatTransport:
         self._room_id      = None
         self._connected    = threading.Event()
         self._ws_thread    = None
-        self._own_username = RC_USERNAME   # used to skip our own messages
+        self._sent_ids: set[str] = set()   # IDs of messages we posted — skip on RX
+        self._sub_id:   str      = ""      # DDP subscription ID
 
     # ------------------------------------------------------------------
     # Public API
@@ -132,7 +133,11 @@ class RocketChatTransport:
                 timeout=10,
                 verify=RC_VERIFY_SSL,
             )
-            if not resp.ok:
+            if resp.ok:
+                msg_id = resp.json().get("message", {}).get("_id")
+                if msg_id:
+                    self._sent_ids.add(msg_id)
+            else:
                 log.warning("RC send failed %d: %s", resp.status_code, resp.text[:200])
         except Exception as e:
             log.warning("RC send error: %s", e)
@@ -300,13 +305,26 @@ class RocketChatTransport:
                 log.error("DDP login failed: %s", msg["error"])
                 return
             log.info("DDP login OK")
+            self._sub_id = str(uuid.uuid4())
             self._send_ddp({
                 "msg":    "sub",
-                "id":     str(uuid.uuid4()),
+                "id":     self._sub_id,
                 "name":   "stream-room-messages",
                 "params": [self._room_id, False],
             })
+            return
+
+        # Subscription confirmed → now safe to signal ready and (re)send HELLO
+        if kind == "ready" and self._sub_id in msg.get("subs", []):
+            log.info("Subscription confirmed")
             self._connected.set()
+            # Re-send HELLO so the peer gets it now that we're subscribed
+            if _tunnel.tunnel._crypto._public_key is not None:
+                hello = _tunnel.tunnel._framer.encode_hello(
+                    _tunnel.tunnel._crypto.get_public_key_b64()
+                )
+                self.send(hello)
+                log.info("HELLO re-sent after subscription confirmed")
             return
 
         # Incoming room message
@@ -314,13 +332,15 @@ class RocketChatTransport:
             try:
                 args    = msg["fields"]["args"]
                 rc_msg  = args[0]
-                sender  = rc_msg.get("u", {}).get("username", "")
+                msg_id  = rc_msg.get("_id", "")
                 text    = rc_msg.get("msg", "").strip()
             except (KeyError, IndexError, TypeError):
                 return
 
-            # Skip our own messages and non-tunnel traffic
-            if sender == self._own_username:
+            # Skip messages we sent ourselves (by ID, not username —
+            # so two nodes using the same account still work correctly)
+            if msg_id and msg_id in self._sent_ids:
+                self._sent_ids.discard(msg_id)  # free memory once seen
                 return
             if not (text.startswith("HELLO:") or text.startswith("PKT:")):
                 return
