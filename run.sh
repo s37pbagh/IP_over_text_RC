@@ -72,17 +72,37 @@ echo -e "${GREEN}✓ Dependencies ready${RESET}"
 echo
 
 # ---------------------------------------------------------------------------
-# Step 2 — Rocket.Chat connection details
+# Step 2 — Node role (which side of the tunnel is this machine?)
 # ---------------------------------------------------------------------------
-echo -e "${BOLD}[2/4] Rocket.Chat server${RESET}"
+echo -e "${BOLD}[2/5] Tunnel role${RESET}"
+echo -e "  ${YELLOW}A)${RESET} Node A — local ${CYAN}10.0.0.1${RESET} → peer ${CYAN}10.0.0.2${RESET}"
+echo -e "  ${YELLOW}B)${RESET} Node B — local ${CYAN}10.0.0.2${RESET} → peer ${CYAN}10.0.0.1${RESET}"
+echo
+printf "${CYAN}Which node is this machine?${RESET} [A/b]: "
+read -r node_choice
+node_choice="${node_choice:-A}"
+if [[ "$(echo "$node_choice" | tr '[:upper:]' '[:lower:]')" == "b" ]]; then
+    TUN_LOCAL_IP="10.0.0.2"
+    TUN_PEER_IP="10.0.0.1"
+else
+    TUN_LOCAL_IP="10.0.0.1"
+    TUN_PEER_IP="10.0.0.2"
+fi
+echo -e "${GREEN}✓ This machine: ${TUN_LOCAL_IP}  Peer: ${TUN_PEER_IP}${RESET}"
+echo
+
+# ---------------------------------------------------------------------------
+# Step 3 — Rocket.Chat connection details
+# ---------------------------------------------------------------------------
+echo -e "${BOLD}[3/5] Rocket.Chat server${RESET}"
 ask "Server URL (e.g. https://chat.example.com)" RC_URL "${RC_URL:-chat.byparham.com}"
 ask_optional "Channel name (without #)" RC_CHANNEL "${RC_CHANNEL:-tunnel}"
 echo
 
 # ---------------------------------------------------------------------------
-# Step 3 — authentication
+# Step 4 — authentication
 # ---------------------------------------------------------------------------
-echo -e "${BOLD}[3/4] Authentication${RESET}"
+echo -e "${BOLD}[4/5] Authentication${RESET}"
 echo -e "  ${YELLOW}A)${RESET} Personal Access Token  ${GREEN}← recommended${RESET}"
 echo -e "  ${YELLOW}B)${RESET} Username + Password"
 echo
@@ -109,14 +129,13 @@ fi
 echo
 
 # ---------------------------------------------------------------------------
-# Step 4 — TUN / root check
+# Step 5 — TUN / root check
 # ---------------------------------------------------------------------------
-echo -e "${BOLD}[4/4] Network interface${RESET}"
+echo -e "${BOLD}[5/5] Network interface${RESET}"
 if [[ "$EUID" -ne 0 ]]; then
     echo -e "${YELLOW}⚠  TUN interface requires root. Re-launching with sudo…${RESET}"
     echo
 
-    # Export everything so the sudo-ed process inherits the values
     exec sudo \
         RC_URL="$RC_URL" \
         RC_AUTH_TOKEN="$RC_AUTH_TOKEN" \
@@ -124,11 +143,13 @@ if [[ "$EUID" -ne 0 ]]; then
         RC_USERNAME="$RC_USERNAME" \
         RC_PASSWORD="$RC_PASSWORD" \
         RC_CHANNEL="$RC_CHANNEL" \
+        TUN_LOCAL_IP="$TUN_LOCAL_IP" \
+        TUN_PEER_IP="$TUN_PEER_IP" \
         "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/main.py"
 fi
 
 # Already root — just export and run
-export RC_URL RC_AUTH_TOKEN RC_USER_ID RC_USERNAME RC_PASSWORD RC_CHANNEL
+export RC_URL RC_AUTH_TOKEN RC_USER_ID RC_USERNAME RC_PASSWORD RC_CHANNEL TUN_LOCAL_IP TUN_PEER_IP
 echo -e "${GREEN}✓ Running as root${RESET}"
 echo
 

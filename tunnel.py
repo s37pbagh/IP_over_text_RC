@@ -37,8 +37,8 @@ log = logging.getLogger(__name__)
 
 TUN_NAME  = "tun-txtunnel"
 TUN_MTU   = 1400
-LOCAL_IP  = "10.0.0.1"
-PEER_IP   = "10.0.0.2"
+LOCAL_IP  = os.environ.get("TUN_LOCAL_IP", "10.0.0.1")
+PEER_IP   = os.environ.get("TUN_PEER_IP",  "10.0.0.2")
 NETMASK   = "255.255.255.252"   # /30
 
 HKDF_INFO  = b"text-tunnel-v1"
