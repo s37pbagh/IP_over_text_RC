@@ -354,7 +354,7 @@ class RocketChatTransport:
             if not (text.startswith("HELLO:") or text.startswith("PKT:")):
                 return
 
-            log.debug("RX from %s: %s…", sender, text[:60])
+            log.debug("RX msg_id=%s: %s…", msg_id, text[:60])
             _tunnel.receive(text)
 
     def _on_ws_error(self, ws, error) -> None:
