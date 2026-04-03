@@ -88,8 +88,9 @@ class RocketChatTransport:
         self._room_id      = None
         self._connected    = threading.Event()
         self._ws_thread    = None
-        self._sent_ids: set[str] = set()   # IDs of messages we posted — skip on RX
-        self._sub_id:   str      = ""      # DDP subscription ID
+        self._sent_ids:   set[str] = set()   # IDs of messages we posted — skip on RX
+        self._sub_id:     str      = ""      # DDP subscription ID
+        self._start_time: float    = time.time()  # ignore messages older than this
 
     # ------------------------------------------------------------------
     # Public API
@@ -334,14 +335,22 @@ class RocketChatTransport:
                 rc_msg  = args[0]
                 msg_id  = rc_msg.get("_id", "")
                 text    = rc_msg.get("msg", "").strip()
+                # Rocket.Chat timestamp: {"ts": {"$date": <ms since epoch>}}
+                ts_ms   = rc_msg.get("ts", {}).get("$date", 0)
+                msg_age = time.time() - ts_ms / 1000.0
             except (KeyError, IndexError, TypeError):
                 return
 
-            # Skip messages we sent ourselves (by ID, not username —
-            # so two nodes using the same account still work correctly)
-            if msg_id and msg_id in self._sent_ids:
-                self._sent_ids.discard(msg_id)  # free memory once seen
+            # Drop messages from before we started (replayed history)
+            if ts_ms and msg_age > 5:
                 return
+
+            # Skip messages we sent ourselves (by ID, not by username —
+            # so two nodes sharing the same account still work correctly)
+            if msg_id and msg_id in self._sent_ids:
+                self._sent_ids.discard(msg_id)
+                return
+
             if not (text.startswith("HELLO:") or text.startswith("PKT:")):
                 return
 
