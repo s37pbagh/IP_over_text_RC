@@ -403,6 +403,12 @@ class Tunnel:
             self._handle_pkt(parsed)
 
     def _handle_hello(self, peer_pubkey_b64: str) -> None:
+        if self._handshake_done.is_set():
+            # Peer re-sent its HELLO (e.g. it joined late and missed ours).
+            # Re-send our HELLO so it can complete the handshake.
+            log.info("Duplicate HELLO — re-sending our HELLO so peer can complete")
+            send(self._framer.encode_hello(self._crypto.get_public_key_b64()))
+            return
         try:
             self._crypto.derive_shared_key(peer_pubkey_b64)
         except Exception as e:

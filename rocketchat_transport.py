@@ -341,8 +341,9 @@ class RocketChatTransport:
             except (KeyError, IndexError, TypeError):
                 return
 
-            # Drop messages from before we started (replayed history)
-            if ts_ms and msg_age > 5:
+            # Drop messages from previous sessions (replayed history).
+            # Use a generous 60s window so slow-starting peers still get through.
+            if ts_ms and msg_age > 60:
                 return
 
             # Skip messages we sent ourselves (by ID, not by username —
