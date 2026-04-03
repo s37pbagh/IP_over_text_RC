@@ -1,0 +1,4 @@
+cryptography>=41.0.0
+requests>=2.31.0
+websocket-client>=1.7.0
+python-pytun>=2.3.0   # optional, Linux only
